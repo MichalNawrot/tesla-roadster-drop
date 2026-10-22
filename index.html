@@ -1,0 +1,1711 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roadster Drop</title>
+<meta name="description" content="A cartoon landing game: drop a Tesla Roadster from the sky and land it on cold-gas thrusters without bending it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Luckiest+Guy&display=swap">
+<style>
+/* Roadster Drop — cartoon UI. The world is drawn on the canvas; this file
+   styles the HUD and the two overlays (menu, result). */
+
+:root {
+  --ink: #2b2140;
+  --paper: #fff6e5;
+  --paper-2: #ffe9c2;
+  --red: #e8402f;
+  --red-dark: #b42a1c;
+  --yellow: #ffd23f;
+  --blue: #7ecbff;
+  --blue-deep: #2f7fd1;
+  --green: #79c94f;
+  --grey: #c9c2b7;
+  --shadow: 0 6px 0 var(--ink);
+  --font-body: "Fredoka", "Nunito", "Segoe UI", system-ui, sans-serif;
+  --font-title: "Luckiest Guy", "Fredoka", "Impact", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: #7ecbff;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+#world {
+  position: fixed;
+  inset: 0;
+  display: block;
+}
+
+.hidden { display: none !important; }
+
+kbd {
+  display: inline-block;
+  font: 600 0.85em var(--font-body);
+  padding: 0.05em 0.5em;
+  border: 2px solid var(--ink);
+  border-bottom-width: 4px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  line-height: 1.3;
+  vertical-align: middle;
+}
+
+/* ------------------------------------------------------------------ HUD */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  padding: max(12px, env(safe-area-inset-top)) 16px 16px;
+}
+
+.gauges {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.gauge {
+  min-width: 118px;
+  padding: 8px 12px 6px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.gauge .label,
+.gas .label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.gauge .value {
+  font-family: var(--font-title);
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.gauge .unit {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+  margin-left: 5px;
+  opacity: 0.7;
+}
+#gauge-g.hot { background: #ffd9d4; }
+#gauge-g.hot .value { color: var(--red-dark); }
+
+.gas {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: min(260px, 42vw);
+  padding: 8px 12px 8px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.gas .label { display: flex; justify-content: space-between; }
+.gas .bar {
+  position: relative;
+  height: 22px;
+  margin-top: 6px;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+#hud-gas-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: linear-gradient(180deg, #b7ecff, #5fc3ff);
+  transform-origin: left;
+}
+.gas.short #hud-gas-fill { background: linear-gradient(180deg, #ffb3a7, #ff6a4f); }
+#hud-gas-need {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 4px;
+  margin-left: -2px;
+  background: var(--ink);
+  left: 0;
+  display: none;
+}
+.gas .sub { font-size: 12px; margin-top: 6px; opacity: 0.75; }
+
+.chip {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--yellow);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  font-weight: 600;
+  font-size: 18px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 4px 0 var(--ink);
+  white-space: nowrap;
+  animation: bob 1.2s ease-in-out infinite;
+}
+@keyframes bob {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -6px); }
+}
+
+/* -------------------------------------------------------------- overlays */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(43, 33, 64, 0.35);
+  overflow: auto;
+}
+.card {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 22px 26px 24px;
+  background: var(--paper);
+  border: 4px solid var(--ink);
+  border-radius: 26px;
+  box-shadow: 0 10px 0 var(--ink);
+  animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes pop {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: clamp(44px, 9vw, 64px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--red);
+  text-shadow: 3px 3px 0 var(--ink);
+  transform: rotate(-2deg);
+}
+.title span { color: var(--blue-deep); }
+.tagline { margin: 12px 0 6px; font-size: 16px; line-height: 1.45; }
+
+section { margin-top: 14px; }
+h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-title);
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.row { display: flex; align-items: center; gap: 14px; }
+.readout { min-width: 96px; font-size: 18px; white-space: nowrap; }
+.readout b { font-family: var(--font-title); font-size: 26px; letter-spacing: 0.02em; }
+
+input[type="range"] {
+  flex: 1;
+  height: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fff, var(--yellow));
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--red);
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: grab;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--red);
+  cursor: grab;
+}
+
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.presets button {
+  font: 600 14px var(--font-body);
+  padding: 6px 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+}
+.presets button.on { background: var(--yellow); }
+.presets button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.fact { margin: 10px 0 0; font-size: 14px; line-height: 1.4; opacity: 0.85; }
+
+.levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.level {
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--ink);
+  padding: 10px 12px;
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 var(--ink);
+  cursor: pointer;
+}
+.level.on { background: var(--yellow); }
+.level.impossible { background: #efe7df; }
+.level.on.impossible { background: #ffd9d4; }
+.level .name { font-family: var(--font-title); font-size: 19px; letter-spacing: 0.03em; }
+.level .height { font-weight: 700; font-size: 14px; }
+.level .blurb { font-size: 12.5px; line-height: 1.3; margin-top: 4px; opacity: 0.8; }
+.level .badge { font-size: 12px; font-weight: 700; margin-top: 6px; color: var(--blue-deep); }
+.level.impossible .badge { color: var(--red-dark); }
+.level .best { color: #d99a00; margin-left: 6px; letter-spacing: 0.1em; }
+
+.h2-note { font-family: var(--font-body); font-size: 13px; font-weight: 600; letter-spacing: 0; opacity: 0.7; margin-left: 6px; }
+
+/* difficulty tags: Trivial … Impossible */
+.dtag {
+  display: inline-block;
+  padding: 1px 9px;
+  margin-right: 4px;
+  font: 700 12px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+.dtag.d0 { background: #d8f3e6; }
+.dtag.d1 { background: #b6ec9b; }
+.dtag.d2 { background: #9fd8ff; }
+.dtag.d3 { background: #ffd23f; }
+.dtag.d4 { background: #ff9a7a; }
+.dtag.d5 { background: var(--ink); color: #fff; }
+.dtag.ap { background: #ff8ad8; }
+.chip .dtag { margin-left: 4px; margin-right: 0; }
+.diff { margin: -2px 0 10px; font-size: 15px; font-weight: 600; opacity: 0.9; }
+
+.toggles { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 15px; font-weight: 600; }
+.toggles input { width: 20px; height: 20px; accent-color: var(--red); vertical-align: -4px; margin-right: 6px; }
+
+button.big, .buttons button {
+  font: 700 18px var(--font-body);
+  color: var(--ink);
+  padding: 12px 22px;
+  background: var(--yellow);
+  border: 4px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: 0 6px 0 var(--ink);
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+button.big {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  font-family: var(--font-title);
+  font-size: 30px;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--red);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+button.big:hover, .buttons button:hover { transform: translateY(-2px); }
+button.big:active, .buttons button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--ink); }
+button kbd { margin-left: 8px; font-size: 13px; text-shadow: none; }
+button.big kbd { font-family: var(--font-body); color: var(--ink); }
+
+.foot { margin: 16px 0 0; font-size: 13px; line-height: 1.45; opacity: 0.75; }
+
+/* --------------------------------------------------------------- result */
+#result .card { text-align: center; }
+.stars { font-size: 46px; letter-spacing: 0.08em; color: #d99a00; text-shadow: 2px 2px 0 var(--ink); }
+.stars .off { color: #d7cfc2; text-shadow: none; }
+#res-title {
+  margin: 4px 0 6px;
+  font-family: var(--font-title);
+  font-size: clamp(36px, 8vw, 54px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--blue-deep);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+#result.bad #res-title { color: var(--red); }
+#res-text { margin: 0 0 12px; font-size: 17px; }
+#res-stats {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  text-align: left;
+}
+#res-stats td { padding: 5px 8px; border-top: 2px dashed #d7cfc2; }
+#res-stats td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#res-stats tr.hot td:last-child { color: var(--red-dark); }
+.lesson {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  text-align: left;
+  background: var(--paper-2);
+  border: 3px dashed var(--ink);
+  border-radius: 14px;
+}
+.buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.buttons button { flex: 1; min-width: 140px; }
+.buttons button.big { margin-top: 0; font-size: 24px; }
+
+@media (max-width: 560px) {
+  .gauge { min-width: 92px; padding: 6px 10px 4px; }
+  .gauge .value { font-size: 22px; }
+  .gas { width: 44vw; }
+  .hint { font-size: 15px; bottom: 60px; }
+  .card { padding: 18px 16px 20px; border-radius: 20px; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="world" aria-label="Game view"></canvas>
+
+<!-- ============ in-flight HUD ============ -->
+<div id="hud" class="hidden" aria-live="off">
+  <div class="gauges">
+    <div class="gauge">
+      <div class="label">Altitude</div>
+      <div class="value"><span id="hud-alt">0.0</span><span class="unit">m</span></div>
+    </div>
+    <div class="gauge">
+      <div class="label">Speed</div>
+      <div class="value"><span id="hud-vel">0.0</span><span class="unit">m/s</span></div>
+    </div>
+    <div class="gauge" id="gauge-g">
+      <div class="label">g-load</div>
+      <div class="value"><span id="hud-g">1.0</span><span class="unit">g</span></div>
+    </div>
+  </div>
+  <div class="gas" id="gas">
+    <div class="label">Cold gas <span id="hud-gas-txt">100%</span></div>
+    <div class="bar">
+      <div id="hud-gas-fill"></div>
+      <div id="hud-gas-need" title="Gas a full braking burn needs right now"></div>
+    </div>
+    <div class="sub" id="hud-gas-sub">one fill ≈ 80 kN·s</div>
+  </div>
+  <div class="chip" id="hud-chip"></div>
+  <div class="hint" id="hud-hint">Hold <kbd>Space</kbd> (or touch) to open the nozzles</div>
+</div>
+
+<!-- ============ title / settings ============ -->
+<div id="menu" class="overlay">
+  <div class="card">
+    <h1 class="title">Roadster <span>Drop</span></h1>
+    <p class="tagline">A Tesla Roadster falls out of the sky. Hold <kbd>Space</kbd> to open the cold-gas nozzles and set it down gently. The softer the touchdown, the more stars.</p>
+
+    <section>
+      <h2>Weight</h2>
+      <div class="row">
+        <input type="range" id="mass" min="300" max="2400" step="50" aria-label="Car mass in kilograms">
+        <div class="readout"><b id="mass-kg">2,000</b> kg</div>
+      </div>
+      <div class="presets" id="mass-presets"></div>
+      <p class="fact" id="mass-fact"></p>
+    </section>
+
+    <section>
+      <h2>Level <span class="h2-note">difficulty follows the weight you picked</span></h2>
+      <div class="levels" id="levels"></div>
+    </section>
+
+    <section class="toggles">
+      <label><input type="checkbox" id="assist"> Show where you would stop if you burn now</label>
+      <label><input type="checkbox" id="sound"> Sound</label>
+      <label><input type="checkbox" id="autopilot"> Autopilot fires the nozzles for you (<kbd>A</kbd> toggles it in flight)</label>
+    </section>
+
+    <button id="start" class="big">Drop it! <kbd>Enter</kbd></button>
+
+    <p class="foot">The physics behind it: over 80 kN of thrust, 250 kg of air worth about 80 kN·s of push, thrust that fades as the tank cools, and a car that falls belly-first through real air. Nobody is inside, so only the touchdown counts.</p>
+  </div>
+</div>
+
+<!-- ============ result ============ -->
+<div id="result" class="overlay hidden">
+  <div class="card">
+    <div class="stars" id="res-stars" aria-label="Rating"></div>
+    <h1 id="res-title">Clean landing</h1>
+    <p class="diff" id="res-diff"></p>
+    <p id="res-text"></p>
+    <table id="res-stats"></table>
+    <p class="lesson" id="res-lesson"></p>
+    <div class="buttons">
+      <button id="retry" class="big">Again <kbd>R</kbd></button>
+      <button id="next">Next level <kbd>N</kbd></button>
+      <button id="to-menu">Settings <kbd>Esc</kbd></button>
+    </div>
+  </div>
+</div>
+
+<script id="physics">
+/* Roadster Drop — physics core (no DOM).
+ *
+ * Runs in the browser as a plain script (window.RoadsterPhysics) and also loads
+ * in Node (module.exports). Every number traces back to the official facts and physics
+ *  — "over 80 kN" of thrust, 250 kg of air
+ *  — one full fill ≈ 65–96 kN·s of usable impulse,
+ *                                thrust fades as the tank cools and empties
+ *  — 300 kg shell … 2,400 kg heavy Rocket trim
+ */
+(function (root) {
+  'use strict';
+
+  const C = {
+    G: 9.80665,              // m/s²
+    THRUST_MAX: 80e3,        // N — all nozzles vectored straight down
+    IMPULSE_TOTAL: 80e3,     // N·s — one full 250 kg fill (~65–96 kN·s)
+    FADE_MIN: 0.30,          // thrust fraction with the tank nearly empty (cold, low pressure)
+    VALVE_OPEN_TAU: 0.30,    // s — valves + manifold take ~0.3 s to come up to full flow
+    VALVE_CLOSE_TAU: 0.04,   // s — but shut quickly
+    RHO_AIR: 1.225,          // kg/m³
+    CD_A: 8.0,               // m² — car falling belly-first: Cd ≈ 0.9 × ≈ 9 m² planform
+    SUSPENSION_TRAVEL: 0.20, // m — spring + tyre travel that absorbs the touchdown
+    MASS_MIN: 300,
+    MASS_MAX: 2400,
+  };
+
+  const MASS_PRESETS = [
+    { kg: 300,  label: 'Hollow RC shell',     note: 'a hollow body, no batteries' },
+    { kg: 1700, label: 'Tesla’s target', note: 'lightest trim, “under 1,700 kg”' },
+    { kg: 2000, label: 'Typical EV',       note: 'a full battery pack, about 2,000 kg' },
+    { kg: 2400, label: 'Rocket, heavy',       note: '600 L of tanks + 250 kg of air' },
+  ];
+
+  /* Heights chosen so each mass preset has a level that is just possible:
+   * one fill stops 2,400 kg from ≤ 22 m, 2,000 kg from ≤ 42 m, 1,700 kg from
+   * ≤ 73 m, 1,400 kg from ≤ 165 m. */
+  const LEVELS = [
+    { id: 'hop',   name: 'Semi hop',   height: 7,   blurb: 'The kickflip apex: 7 m, just over a Tesla Semi.' },
+    { id: 'ramp',  name: 'Ramp top',   height: 21,  blurb: 'The top of the wall-climb ramp. Tight for the heavy Rocket.' },
+    { id: 'crane', name: 'Crane drop', height: 40,  blurb: 'Two tonnes need almost the whole tank from here.' },
+    { id: 'tower', name: 'Tower drop', height: 70,  blurb: 'Tesla’s 1,700 kg target can only just stop.' },
+    { id: 'sky',   name: 'Skydive',    height: 120, blurb: 'Only a light car can stop from here on one fill.' },
+  ];
+
+  const RATINGS = [
+    { maxG: 1.0,      stars: 3, title: 'Feather landing', text: 'Barely a wobble. The suspension did not even notice.' },
+    { maxG: 2.0,      stars: 2, title: 'Clean landing',   text: 'A firm touchdown. Nothing bent.' },
+    { maxG: 3.5,      stars: 1, title: 'Rough landing',   text: 'Bottomed out the suspension and scuffed the splitter.' },
+    { maxG: Infinity, stars: 0, title: 'Wrecked',         text: 'That was a crash, not a landing.' },
+  ];
+
+  function thrustFade(gas) {
+    return gas <= 0 ? 0 : C.FADE_MIN + (1 - C.FADE_MIN) * gas;
+  }
+
+  function createState(mass, height) {
+    return {
+      mass,
+      alt: height,          // m above the pad
+      vel: 0,               // m/s, up positive
+      valve: 0,             // 0..1 nozzle valve opening
+      gas: 1,               // fraction of the fill left
+      t: 0,
+      thrust: 0,            // N
+      drag: 0,              // N (signed, up positive)
+      specificG: 1,         // what an accelerometer in the car reads, in g
+      peakG: 1,
+      impulseUsed: 0,       // N·s
+      burnTime: 0,          // s with the valve open
+      gasOutAlt: null,      // altitude at which the tank ran dry
+      landed: false,
+      touchdownSpeed: 0,    // m/s
+      impactG: 0,
+      maxAlt: height,
+    };
+  }
+
+  /* Advance the state by dt seconds. `fire` is the Space key. */
+  function step(s, dt, fire) {
+    if (s.landed) return s;
+
+    const target = (fire && s.gas > 0) ? 1 : 0;
+    const tau = target > s.valve ? C.VALVE_OPEN_TAU : C.VALVE_CLOSE_TAU;
+    s.valve += (target - s.valve) * (1 - Math.exp(-dt / tau));
+    if (target === 0 && s.valve < 1e-3) s.valve = 0;
+
+    let F = C.THRUST_MAX * s.valve * thrustFade(s.gas);
+    const want = F * dt;
+    const left = s.gas * C.IMPULSE_TOTAL;
+    if (want >= left) {                 // last puff of gas
+      F = left / dt;
+      s.gas = 0;
+      s.valve = 0;
+      if (s.gasOutAlt === null) s.gasOutAlt = s.alt;
+    } else {
+      s.gas -= want / C.IMPULSE_TOTAL;
+    }
+    s.impulseUsed += F * dt;
+    if (F > 0) s.burnTime += dt;
+
+    const drag = -0.5 * C.RHO_AIR * C.CD_A * s.vel * Math.abs(s.vel);
+    const specific = (F + drag) / s.mass;
+    const a = specific - C.G;
+    s.vel += a * dt;
+    s.alt += s.vel * dt;
+    s.t += dt;
+
+    s.thrust = F;
+    s.drag = drag;
+    s.specificG = specific / C.G;
+    if (s.specificG > s.peakG) s.peakG = s.specificG;
+    if (s.alt > s.maxAlt) s.maxAlt = s.alt;
+
+    if (s.alt <= 0) {
+      s.alt = 0;
+      s.landed = true;
+      s.touchdownSpeed = Math.max(0, -s.vel);
+      s.impactG = (s.touchdownSpeed * s.touchdownSpeed) / (2 * C.SUSPENSION_TRAVEL * C.G);
+      s.vel = 0;
+      s.valve = 0;
+      s.thrust = 0;
+      s.specificG = 1;
+    }
+    return s;
+  }
+
+  function rate(impactG) {
+    return RATINGS.find((r) => impactG <= r.maxG);
+  }
+
+  /* Simulate a full burn from the current state in free space and report how
+   * far the car would fall before it stops, and how much gas that takes.
+   * Includes valve lag, drag and thrust fade, so it is the honest answer to
+   * "if I hold Space from this instant, where do I stop?". */
+  function predictFullBurn(s, dt, vTarget) {
+    dt = dt || 1 / 240;
+    vTarget = vTarget || 0;                 // burn until the descent is this slow (m/s, ≥ 0)
+    if (s.landed || s.vel >= -vTarget) return { distance: 0, impulse: 0, time: 0, feasible: true, distanceToEmpty: Infinity };
+    const c = Object.assign({}, s, { alt: 1e9, landed: false, maxAlt: 1e9 });
+    const alt0 = c.alt;
+    const used0 = c.impulseUsed;
+    let t = 0;
+    while (c.vel < -vTarget && t < 30) {
+      step(c, dt, true);
+      t += dt;
+      if (c.gas <= 0 && c.vel < -vTarget) {
+        return { distance: Infinity, impulse: c.impulseUsed - used0, time: t, feasible: false, distanceToEmpty: alt0 - c.alt };
+      }
+    }
+    return { distance: alt0 - c.alt, impulse: c.impulseUsed - used0, time: t, feasible: c.vel >= -vTarget, distanceToEmpty: Infinity };
+  }
+
+  /* Autopilot: fire exactly when a full burn would bring the descent down to
+   * AUTOPILOT.touchSpeed right at the pad. Call it every physics step; it
+   * returns whether the valve should be open. If the gas cannot stop the car
+   * it burns so that the tank runs dry at touchdown, which is the softest
+   * crash available. `ctl` keeps a little hysteresis between calls. */
+  const AUTOPILOT = { touchSpeed: 1.0, margin: 0.02, dt: 1 / 240 };
+  function autopilotFire(s, ctl) {
+    if (s.landed || s.vel >= 0) { ctl.firing = false; return false; }
+    if (ctl.firing) {                        // once burning, hold until the descent is slow
+      ctl.firing = s.vel < -AUTOPILOT.touchSpeed;
+      return ctl.firing;
+    }
+    const p = predictFullBurn(s, AUTOPILOT.dt, AUTOPILOT.touchSpeed);
+    const need = p.feasible ? p.distance : p.distanceToEmpty;
+    const slack = s.alt - need;              // metres of free fall still available
+    const nextStep = -s.vel * AUTOPILOT.dt;  // fire one step early rather than one step late
+    ctl.firing = slack <= nextStep + AUTOPILOT.margin;
+    return ctl.firing;
+  }
+
+  /* The perfect "suicide burn": fall until a full burn would stop the car
+   * exactly on the pad, then burn. Returns what that burn costs — the least
+   * gas any landing from this height can use — and whether it is possible. */
+  function idealBurn(mass, height, dt) {
+    dt = dt || 1 / 240;
+    const s = createState(mass, height);
+    let p = predictFullBurn(s);
+    while (!s.landed && s.t < 60) {
+      p = predictFullBurn(s);
+      if (p.distance >= s.alt) break;
+      step(s, dt, false);
+    }
+    return { startAlt: s.alt, speedAtStart: -s.vel, impulse: p.impulse, burnTime: p.time, feasible: p.feasible };
+  }
+
+  /* Run a whole drop under the autopilot (tests and level tuning). */
+  function autopilot(mass, height, dt) {
+    dt = dt || 1 / 240;
+    const s = createState(mass, height);
+    const ctl = { firing: false };
+    while (!s.landed && s.t < 60) step(s, dt, autopilotFire(s, ctl));
+    return s;
+  }
+
+  /* Impulse delivered by a quick human tap of Space (about 50 ms) including
+   * the valve's closing tail. Divided by the mass it is the smallest speed
+   * change a player can make: the car's twitchiness. */
+  let tapImpulseMemo = null;
+  function tapImpulse() {
+    if (tapImpulseMemo !== null) return tapImpulseMemo;
+    const s = createState(1e6, 1e9);        // so heavy it barely moves, so no drag
+    const dt = 1 / 240;
+    for (let i = 0; i < 12; i++) step(s, dt, true);
+    for (let i = 0; i < 240; i++) step(s, dt, false);
+    tapImpulseMemo = s.impulseUsed;
+    return tapImpulseMemo;
+  }
+
+  /* Difficulty of a (mass, height) combination, from two independent causes:
+   *  - gas margin: how many seconds of hovering the gas left over after a
+   *    perfect burn would buy (heavy car, high drop → little margin);
+   *  - twitchiness: how much one tap of Space changes the speed (light car →
+   *    every tap is a kick of several m/s).
+   * The worse of the two sets the level; both being awkward adds one. */
+  const DIFFICULTY = ['Trivial', 'Easy', 'Normal', 'Hard', 'Extreme', 'Impossible'];
+  function difficulty(mass, height, dt) {
+    const ideal = idealBurn(mass, height, dt);
+    const tapDv = tapImpulse() / mass;
+    const tapScore = tapDv < 0.8 ? 0 : tapDv < 1.2 ? 1 : tapDv < 1.8 ? 2 : tapDv < 3.0 ? 3 : 4;
+    if (!ideal.feasible) {
+      return { level: 5, name: DIFFICULTY[5], ideal, hoverMargin: 0, tapDv, gasScore: 5, tapScore };
+    }
+    const hoverMargin = (C.IMPULSE_TOTAL - ideal.impulse) / (mass * C.G);
+    const gasScore = hoverMargin > 6 ? 0 : hoverMargin > 2.5 ? 1 : hoverMargin > 1.2 ? 2 : hoverMargin > 0.5 ? 3 : 4;
+    let level = Math.max(gasScore, tapScore);
+    if (Math.min(gasScore, tapScore) >= 2) level = Math.min(4, level + 1);
+    return { level, name: DIFFICULTY[level], ideal, hoverMargin, tapDv, gasScore, tapScore };
+  }
+
+  const api = {
+    C, MASS_PRESETS, LEVELS, RATINGS, DIFFICULTY,
+    thrustFade, createState, step, rate, predictFullBurn, idealBurn, autopilot, autopilotFire, AUTOPILOT, tapImpulse, difficulty,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.RoadsterPhysics = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+/* Roadster Drop — game loop, cartoon renderer, HUD and menus.
+ * The simulation itself is the physics script above. */
+(function () {
+  'use strict';
+
+  const P = window.RoadsterPhysics;
+  const C = P.C;
+  const $ = (s) => document.querySelector(s);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const fmt = (n, d) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const TAU = Math.PI * 2;
+
+  const INK = '#2b2140';
+  const FONT_TITLE = '"Luckiest Guy", "Fredoka", Impact, sans-serif';
+  const FONT_BODY = '"Fredoka", "Segoe UI", system-ui, sans-serif';
+
+  // ------------------------------------------------------------ settings
+  const KEY = 'roadster-drop';
+  const settings = Object.assign({ mass: 2000, level: 0, assist: true, sound: true, autopilot: false, best: {} }, loadSettings());
+  settings.mass = clamp(Math.round(settings.mass / 50) * 50, C.MASS_MIN, C.MASS_MAX);
+  settings.level = clamp(settings.level | 0, 0, P.LEVELS.length - 1);
+  function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveSettings() {
+    try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch (e) { /* private mode */ }
+  }
+
+  // ------------------------------------------------------------ canvas
+  const canvas = $('#world');
+  const ctx = canvas.getContext('2d');
+  const view = { w: 0, h: 0, dpr: 1 };
+  function resize() {
+    view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    view.w = window.innerWidth;
+    view.h = window.innerHeight;
+    canvas.width = Math.round(view.w * view.dpr);
+    canvas.height = Math.round(view.h * view.dpr);
+    canvas.style.width = view.w + 'px';
+    canvas.style.height = view.h + 'px';
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ------------------------------------------------------------ camera
+  // ppm = pixels per metre. The car sits ~30% from the top while high up; the
+  // pad slides in from below and locks at 86% of the screen height.
+  const cam = { ppm: 40, bottom: 0 };
+  const groundY = () => view.h * 0.86;
+  const sy = (alt) => groundY() - (alt - cam.bottom) * cam.ppm;
+  const sx = (x) => view.w * 0.5 + x * cam.ppm;
+  function updateCamera(alt, dt, snap) {
+    const want = clamp(0.6 * view.h / Math.max(alt, 3.5), 13, Math.min(70, view.w / 9));
+    cam.ppm = snap ? want : lerp(cam.ppm, want, 1 - Math.exp(-dt * 3));
+    cam.bottom = Math.max(0, alt - 0.56 * view.h / cam.ppm);
+  }
+
+  // ------------------------------------------------------------ scenery
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rng = mulberry32(2026);
+  const clouds = [];
+  for (let i = 0; i < 70; i++) {
+    clouds.push({
+      x: (rng() - 0.5) * 220,
+      alt: 2 + rng() * 190,
+      s: 1.6 + rng() * 3.2,
+      d: [0.4, 0.65, 1][i % 3],
+      puffs: 3 + Math.floor(rng() * 3),
+      seed: rng(),
+    });
+  }
+  clouds.sort((a, b) => a.d - b.d);
+  const hills = [
+    { d: 0.35, color: '#9ed8a5', items: [[-60, 26], [-25, 34], [15, 30], [50, 36], [90, 24]] },
+    { d: 0.6, color: '#86cf7a', items: [[-70, 14], [-38, 11], [-5, 9], [30, 13], [65, 10]] },
+  ];
+
+  // ------------------------------------------------------------ particles
+  const parts = [];
+  function spawn(p) {
+    parts.push(Object.assign({ x: 0, y: 0, vx: 0, vy: 0, g: 0, drag: 0, r: 0.4, grow: 0, life: 1, age: 0, color: '#fff', kind: 'puff', rot: 0, spin: 0 }, p));
+  }
+  function updateParts(dt) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.age += dt;
+      if (p.age >= p.life) { parts.splice(i, 1); continue; }
+      p.vy -= p.g * dt;
+      const k = Math.max(0, 1 - p.drag * dt);
+      p.vx *= k; p.vy *= k;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.spin * dt;
+      p.r += p.grow * dt;
+      if (p.kind === 'wheel' && p.y < 0.36) { p.y = 0.36; p.vy = -p.vy * 0.45; p.vx *= 0.8; p.spin *= 0.8; }
+      if (p.kind === 'confetti' && p.y < 0.05) { p.y = 0.05; p.vy = 0; p.vx *= 0.9; p.spin *= 0.9; }
+    }
+  }
+  function puffDust(alt, valve) {
+    const near = 1 - alt / 8;
+    if (near <= 0 || valve <= 0.05) return;
+    if (Math.random() > near * valve * 1.6) return;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    spawn({
+      x: side * (0.8 + Math.random() * 1.4), y: 0.05 + Math.random() * 0.2,
+      vx: side * (2 + Math.random() * 5) * (0.4 + near), vy: 0.3 + Math.random() * 1.5 * near,
+      g: 2.5, drag: 1.6, r: 0.22 + Math.random() * 0.3, grow: 0.45,
+      life: 0.8 + Math.random() * 0.6, color: 'rgba(222,190,140,0.55)',
+    });
+  }
+  function touchdownFx(impactG) {
+    const n = 6 + Math.min(22, Math.round(impactG * 4));
+    for (let i = 0; i < n; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      spawn({
+        x: side * Math.random() * 2.2, y: 0.1,
+        vx: side * (2 + Math.random() * 5) * (1 + Math.min(impactG, 6) / 3), vy: 0.8 + Math.random() * 2.5,
+        g: 4, drag: 1.5, r: 0.25 + Math.random() * 0.4, grow: 0.5, life: 0.9 + Math.random() * 0.8,
+        color: 'rgba(222,190,140,0.7)',
+      });
+    }
+  }
+  function sparks() {
+    for (let i = 0; i < 24; i++) {
+      spawn({ x: (Math.random() - 0.5) * 3, y: 0.3, vx: (Math.random() - 0.5) * 14, vy: 2 + Math.random() * 7, g: 12, r: 0.08, life: 0.4 + Math.random() * 0.4, color: '#ffb03b', kind: 'spark' });
+    }
+  }
+  function confetti() {
+    const colors = ['#e8402f', '#ffd23f', '#7ecbff', '#79c94f', '#ff8ad8', '#fff'];
+    for (let i = 0; i < 70; i++) {
+      spawn({
+        x: (Math.random() - 0.5) * 3, y: 1.4, vx: (Math.random() - 0.5) * 12, vy: 5 + Math.random() * 9,
+        g: 9, drag: 0.8, r: 0.12 + Math.random() * 0.1, life: 3 + Math.random() * 1.5,
+        color: colors[i % colors.length], kind: 'confetti', rot: Math.random() * TAU, spin: (Math.random() - 0.5) * 12,
+      });
+    }
+  }
+  function wreckFx() {
+    for (const x of [-1.45, 1.45]) {
+      spawn({ x, y: 0.36, vx: x * (3 + Math.random() * 3), vy: 5 + Math.random() * 5, g: 9.81, r: 0.36, life: 6, kind: 'wheel', spin: -x * 10 });
+    }
+    sparks();
+    for (let i = 0; i < 6; i++) {
+      spawn({ x: (Math.random() - 0.5) * 3, y: 0.5, vx: (Math.random() - 0.5) * 8, vy: 3 + Math.random() * 6, g: 9.81, r: 0.1 + Math.random() * 0.12, life: 2, color: INK, kind: 'bit', spin: (Math.random() - 0.5) * 20 });
+    }
+  }
+  function smoke() {
+    spawn({ x: (Math.random() - 0.5) * 1.6, y: 0.9, vx: (Math.random() - 0.5) * 0.6, vy: 1.2 + Math.random() * 0.8, r: 0.35, grow: 0.7, life: 1.8 + Math.random(), color: 'rgba(90,90,100,0.55)' });
+  }
+
+  // ------------------------------------------------------------ audio
+  const audio = { ctx: null, hiss: null };
+  function audioInit() {
+    if (audio.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ac = new AC();
+    const len = ac.sampleRate * 2;
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 1600; bp.Q.value = 0.5;
+    const g = ac.createGain();
+    g.gain.value = 0;
+    src.connect(bp); bp.connect(g); g.connect(ac.destination);
+    src.start();
+    audio.ctx = ac; audio.hiss = g;
+  }
+  function audioResume() { if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume(); }
+  function setHiss(level) {
+    if (!audio.ctx) return;
+    const v = settings.sound ? level * 0.45 : 0;
+    audio.hiss.gain.setTargetAtTime(v, audio.ctx.currentTime, 0.03);
+  }
+  function tone(freq, freqEnd, dur, vol, type) {
+    if (!audio.ctx || !settings.sound) return;
+    const ac = audio.ctx, t = ac.currentTime;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function noiseBurst(dur, vol, cutoff) {
+    if (!audio.ctx || !settings.sound) return;
+    const ac = audio.ctx, t = ac.currentTime;
+    const len = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = vol;
+    src.connect(lp); lp.connect(g); g.connect(ac.destination);
+    src.start(t);
+  }
+  function landingSound(stars) {
+    if (stars === 3) { tone(660, 660, 0.12, 0.25); setTimeout(() => tone(990, 990, 0.25, 0.25), 120); tone(90, 50, 0.2, 0.3); }
+    else if (stars === 2) { tone(110, 55, 0.25, 0.4); }
+    else if (stars === 1) { tone(90, 40, 0.35, 0.6, 'triangle'); noiseBurst(0.3, 0.3, 900); }
+    else { noiseBurst(0.7, 0.9, 500); tone(70, 25, 0.6, 0.8, 'sawtooth'); }
+  }
+
+  // ------------------------------------------------------------ game state
+  let mode = 'menu';            // menu | countdown | flight | landed
+  let state = null;             // physics state
+  let ideal = null;             // ideal burn for this run
+  let diff = null;              // difficulty rating for this run
+  let predict = null;           // predictFullBurn for the current frame
+  let fire = false;
+  let autopilot = false;        // autopilot engaged right now
+  let autopilotUsed = false;    // engaged at any point in this run (no high score then)
+  const apCtl = { firing: false };
+  let cdT = 0;                  // countdown clock
+  let banner = 0;               // "DROP!" banner timer
+  let landedT = 0;              // time since touchdown
+  let resultShown = false;
+  let everFired = false;
+  let smokeClock = 0;
+  const claw = { open: 0, rise: 0 };
+  const car = { squash: 0, squashAmp: 0, tilt: 0, wrecked: false, wheels: true, wobble: 0 };
+  const level = () => P.LEVELS[settings.level];
+
+  function startRun() {
+    const lvl = level();
+    state = P.createState(settings.mass, lvl.height);
+    diff = P.difficulty(settings.mass, lvl.height);
+    ideal = diff.ideal;
+    predict = null;
+    mode = 'countdown';
+    cdT = 0; banner = 0; landedT = 0; smokeClock = 0;
+    resultShown = false; everFired = false; fire = false;
+    autopilot = settings.autopilot; autopilotUsed = autopilot; apCtl.firing = false;
+    parts.length = 0;
+    claw.open = 0; claw.rise = 0;
+    Object.assign(car, { squash: 0, squashAmp: 0, tilt: 0, wrecked: false, wheels: true, wobble: 0 });
+    updateCamera(state.alt, 0, true);
+    $('#menu').classList.add('hidden');
+    $('#result').classList.add('hidden');
+    $('#hud').classList.remove('hidden');
+    $('#hud-hint').classList.remove('hidden');
+    updateHint();
+    updateChip();
+    $('#hud-gas-sub').textContent = ideal.feasible
+      ? `a perfect burn needs ≈ ${fmt(ideal.impulse / 1000, 0)} of 80 kN·s`
+      : 'no burn can stop this car from here';
+    setHiss(0);
+  }
+
+  function updateHint() {
+    $('#hud-hint').innerHTML = autopilot
+      ? 'Autopilot is flying · <kbd>Space</kbd> or <kbd>A</kbd> to take over'
+      : 'Hold <kbd>Space</kbd> (or touch) to open the nozzles · <kbd>A</kbd> for autopilot';
+  }
+  function updateChip() {
+    const lvl = level();
+    $('#hud-chip').innerHTML = `${lvl.name} · ${lvl.height} m · ${fmt(settings.mass, 0)} kg <span class="dtag d${diff.level}">${diff.name}</span>`
+      + (autopilot ? ' <span class="dtag ap">Autopilot</span>' : '');
+  }
+  function setAutopilot(on) {
+    if (mode !== 'flight' && mode !== 'countdown') return;
+    autopilot = on;
+    if (on) { autopilotUsed = true; fire = false; $('#hud-hint').classList.remove('hidden'); }
+    apCtl.firing = false;
+    updateHint();
+    updateChip();
+  }
+
+  function showMenu() {
+    mode = 'menu';
+    fire = false;
+    setHiss(0);
+    $('#hud').classList.add('hidden');
+    $('#result').classList.add('hidden');
+    $('#menu').classList.remove('hidden');
+    renderMenu();
+  }
+
+  function onLanded() {
+    mode = 'landed';
+    landedT = 0;
+    setHiss(0);
+    $('#hud-hint').classList.add('hidden');
+    const r = P.rate(state.impactG);
+    touchdownFx(state.impactG);
+    car.squashAmp = clamp(state.impactG * 0.06, 0.03, 0.25);
+    car.squash = 0;
+    if (r.stars === 0) { car.wrecked = true; car.wheels = false; car.tilt = -0.14; wreckFx(); }
+    else if (r.stars === 1) { car.tilt = -0.03; sparks(); }
+    else if (r.stars === 3) { confetti(); }
+    landingSound(r.stars);
+    const best = settings.best[level().id] || 0;
+    if (!autopilotUsed && r.stars > best) { settings.best[level().id] = r.stars; saveSettings(); }
+  }
+
+  // ------------------------------------------------------------ input
+  function setFire(on) {
+    if (mode !== 'flight' && mode !== 'countdown') return;
+    if (on && autopilot) setAutopilot(false);   // the player takes over
+    fire = on;
+    if (on && mode === 'flight') { everFired = true; $('#hud-hint').classList.add('hidden'); }
+  }
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (e.code === 'Space') {
+      if (tag !== 'INPUT') e.preventDefault();
+      if (!e.repeat) { audioInit(); audioResume(); setFire(true); }
+      return;
+    }
+    if (mode === 'menu') {
+      if (e.code === 'Enter' && tag !== 'BUTTON') { e.preventDefault(); $('#start').click(); }
+      return;
+    }
+    if (e.code === 'KeyR') { e.preventDefault(); startRun(); }
+    else if (e.code === 'KeyA' && !e.repeat) { e.preventDefault(); setAutopilot(!autopilot); }
+    else if (e.code === 'Escape') { e.preventDefault(); showMenu(); }
+    else if (e.code === 'KeyN' && mode === 'landed') { e.preventDefault(); nextLevel(); }
+  });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') setFire(false); });
+  window.addEventListener('blur', () => setFire(false));
+  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); audioInit(); audioResume(); setFire(true); });
+  window.addEventListener('pointerup', () => setFire(false));
+  window.addEventListener('pointercancel', () => setFire(false));
+
+  function nextLevel() {
+    settings.level = (settings.level + 1) % P.LEVELS.length;
+    saveSettings();
+    startRun();
+  }
+
+  // ------------------------------------------------------------ update
+  const DT = 1 / 240;
+  let acc = 0;
+  let last = performance.now();
+  let clock = 0;
+
+  function update(dt) {
+    clock += dt;
+    if (mode === 'countdown') {
+      cdT += dt;
+      if (cdT >= 1.6) { mode = 'flight'; banner = 0.7; acc = 0; }
+      updateCamera(state.alt, dt, false);
+      car.wobble = Math.sin(clock * 6) * 0.01;
+      return;
+    }
+    if (mode === 'flight') {
+      banner = Math.max(0, banner - dt);
+      claw.open = Math.min(1, claw.open + dt * 5);
+      claw.rise += dt * 30;
+      acc += dt;
+      while (acc >= DT) {
+        P.step(state, DT, autopilot ? P.autopilotFire(state, apCtl) : fire);
+        acc -= DT;
+        if (state.landed) { acc = 0; break; }
+      }
+      predict = state.landed ? null : P.predictFullBurn(state);
+      puffDust(state.alt, state.valve);
+      setHiss(state.valve * (0.4 + 0.6 * P.thrustFade(state.gas)));
+      car.wobble = Math.sin(clock * 9) * 0.012 * state.valve + Math.sin(clock * 2.3) * 0.006;
+      car.tilt = lerp(car.tilt, -state.vel * 0.0025, 1 - Math.exp(-dt * 4));
+      updateCamera(state.alt, dt, false);
+      updateParts(dt);
+      if (state.landed) onLanded();
+      return;
+    }
+    if (mode === 'landed') {
+      landedT += dt;
+      claw.rise += dt * 30;
+      car.squash = car.squashAmp * Math.sin(Math.min(landedT, 0.35) / 0.35 * Math.PI) * Math.exp(-landedT * 3);
+      if (car.wrecked) {
+        smokeClock += dt;
+        if (smokeClock > 0.12) { smokeClock = 0; smoke(); }
+      }
+      updateCamera(0, dt, false);
+      updateParts(dt);
+      if (!resultShown && landedT > 1.1) { resultShown = true; showResult(); }
+    }
+  }
+
+  // ------------------------------------------------------------ drawing helpers
+  function cartoonText(text, x, y, px, fill, align, rotate) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (rotate) ctx.rotate(rotate);
+    ctx.font = `${px}px ${FONT_TITLE}`;
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, px * 0.14);
+    ctx.strokeStyle = INK;
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  }
+  function label(text, x, y, px, fill, bg) {
+    ctx.save();
+    ctx.font = `700 ${px}px ${FONT_BODY}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const w = ctx.measureText(text).width + px * 1.1;
+    const h = px * 1.7;
+    roundRect(x, y - h / 2, w, h, h / 2);
+    ctx.fillStyle = bg; ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = INK; ctx.stroke();
+    ctx.fillStyle = fill;
+    ctx.fillText(text, x + px * 0.55, y + 1);
+    ctx.restore();
+    return w;
+  }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  // Polygon in car metres, drawn inside a transform where 1 unit = 1 m, y up.
+  function poly(pts, fill, lw) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (lw) { ctx.lineWidth = lw; ctx.strokeStyle = INK; ctx.lineJoin = 'round'; ctx.stroke(); }
+  }
+  function circle(x, y, r, fill, lw) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (lw) { ctx.lineWidth = lw; ctx.strokeStyle = INK; ctx.stroke(); }
+  }
+
+  // ------------------------------------------------------------ scene drawing
+  function drawSky() {
+    const alt = state ? state.alt : level().height;
+    const hi = clamp(alt / 150, 0, 1);
+    const g = ctx.createLinearGradient(0, 0, 0, view.h);
+    g.addColorStop(0, lerpColor('#5fb8ff', '#2d6fd6', hi));
+    g.addColorStop(1, lerpColor('#c9ecff', '#8ccaff', hi));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, view.w, view.h);
+  }
+  function lerpColor(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const r = Math.round(lerp(pa >> 16, pb >> 16, t));
+    const gg = Math.round(lerp((pa >> 8) & 255, (pb >> 8) & 255, t));
+    const bl = Math.round(lerp(pa & 255, pb & 255, t));
+    return `rgb(${r},${gg},${bl})`;
+  }
+  function drawSun() {
+    const x = view.w * 0.84, y = view.h * 0.16, r = Math.min(view.w, view.h) * 0.07;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(clock * 0.15);
+    ctx.strokeStyle = 'rgba(255,220,80,0.55)';
+    ctx.lineWidth = r * 0.22;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 1.3, Math.sin(a) * r * 1.3);
+      ctx.lineTo(Math.cos(a) * r * 1.75, Math.sin(a) * r * 1.75);
+      ctx.stroke();
+    }
+    ctx.restore();
+    circle(x, y, r, '#ffd23f', 3);
+    // face
+    circle(x - r * 0.3, y - r * 0.15, r * 0.08, INK);
+    circle(x + r * 0.3, y - r * 0.15, r * 0.08, INK);
+    ctx.beginPath();
+    ctx.arc(x, y + r * 0.1, r * 0.4, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
+  }
+  function drawClouds() {
+    for (const c of clouds) {
+      const s = c.s * cam.ppm * c.d;
+      const X = view.w * 0.5 + c.x * cam.ppm * c.d;
+      const Y = groundY() - (c.alt - cam.bottom * c.d) * cam.ppm * c.d;
+      if (Y < -s * 2 || Y > view.h + s || X < -s * 3 || X > view.w + s * 3) continue;
+      ctx.save();
+      ctx.globalAlpha = 0.55 + 0.45 * c.d;
+      ctx.beginPath();
+      ctx.ellipse(X, Y, s * 1.4, s * 0.55, 0, 0, TAU);
+      for (let i = 0; i < c.puffs; i++) {
+        const t = (i + 0.5) / c.puffs;
+        const px = X + (t - 0.5) * s * 2.2;
+        const pr = s * (0.5 + 0.35 * Math.sin((c.seed + t) * 9));
+        ctx.moveTo(px + pr, Y - s * 0.2);
+        ctx.arc(px, Y - s * 0.2, pr, 0, TAU);
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(43,33,64,0.8)'; ctx.stroke();
+      ctx.restore();
+    }
+  }
+  function drawHills() {
+    for (const h of hills) {
+      const Y = groundY() + cam.bottom * cam.ppm * h.d * h.d;
+      if (Y > view.h + 40) continue;
+      ctx.fillStyle = h.color;
+      ctx.strokeStyle = INK; ctx.lineWidth = 3;
+      for (const [x, r] of h.items) {
+        const X = view.w * 0.5 + x * cam.ppm * h.d;
+        const R = r * cam.ppm * h.d;
+        ctx.beginPath();
+        ctx.arc(X, Y + R * 0.35, R, Math.PI, TAU);
+        ctx.fill(); ctx.stroke();
+      }
+    }
+  }
+  function drawGround() {
+    const y0 = sy(0);
+    if (y0 > view.h + 10) return;
+    const ppm = cam.ppm;
+    // grass and dirt
+    ctx.fillStyle = '#b97a48';
+    ctx.fillRect(0, y0, view.w, view.h - y0);
+    ctx.fillStyle = '#79c94f';
+    ctx.fillRect(0, y0, view.w, Math.max(6, 0.6 * ppm));
+    ctx.fillStyle = INK;
+    ctx.fillRect(0, y0 - 1.5, view.w, 3);
+    // props (in metres, y up)
+    ctx.save();
+    ctx.translate(view.w * 0.5, y0);
+    ctx.scale(ppm, -ppm);
+    const lw = Math.max(0.06, 2.5 / ppm);
+    // landing pad
+    poly([[-5, 0], [5, 0], [5, -0.35], [-5, -0.35]], '#9ea7b3', lw);
+    for (let x = -5; x < 5; x += 1) poly([[x, 0], [x + 0.5, 0], [x + 0.5, -0.12], [x, -0.12]], '#ffd23f');
+    // flags
+    for (const x of [-5.4, 5.4]) {
+      poly([[x - 0.05, 0], [x + 0.05, 0], [x + 0.05, 2.2], [x - 0.05, 2.2]], '#ddd', lw * 0.6);
+      const flap = Math.sin(clock * 5 + x) * 0.15;
+      poly([[x, 2.2], [x + 1.1 * Math.sign(x), 1.85 + flap], [x, 1.5]], '#e8402f', lw * 0.7);
+    }
+    // Tesla Semi for scale (4.1 m tall)
+    ctx.save(); ctx.translate(9.5, 0);
+    poly([[0, 0.55], [0, 3.3], [0.5, 4.1], [3.6, 4.1], [3.6, 3.2], [4.9, 2.9], [5.2, 2.5], [10.5, 2.5], [10.5, 0.55]], '#f2f2f2', lw);
+    poly([[3.6, 2.5], [10.5, 2.5], [10.5, 3.7], [3.6, 3.7]], '#d8dde3', lw);
+    poly([[0.6, 2.4], [0.6, 3.25], [1.0, 3.85], [3.4, 3.85], [3.4, 2.4]], '#9fd8ff', lw);
+    poly([[0.9, 2.5], [1.3, 3.7], [1.6, 3.7], [1.2, 2.5]], 'rgba(255,255,255,0.7)');
+    poly([[0, 0.9], [10.5, 0.9], [10.5, 1.5], [0, 1.5]], '#c8cdd3', lw);
+    for (const wx of [1.4, 5.0, 6.6]) { circle(wx, 0.55, 0.55, INK, lw); circle(wx, 0.55, 0.25, '#c9c2b7', lw); }
+    ctx.restore();
+    // two parked cars (the kickflip row)
+    for (const [cx, col] of [[-10.5, '#5b8def'], [-16.5, '#c9c2b7']]) {
+      ctx.save(); ctx.translate(cx, 0);
+      poly([[-2.3, 0.4], [-2.3, 0.9], [-1.4, 0.95], [-0.7, 1.45], [0.8, 1.45], [1.6, 0.95], [2.3, 0.85], [2.3, 0.4]], col, lw);
+      poly([[-1.2, 0.95], [-0.6, 1.33], [0.7, 1.33], [1.3, 0.95]], '#9fd8ff', lw * 0.8);
+      for (const wx of [-1.45, 1.45]) { circle(wx, 0.4, 0.4, INK, lw); circle(wx, 0.4, 0.17, '#c9c2b7', lw * 0.8); }
+      ctx.restore();
+    }
+    // cacti
+    for (const cx of [-23, 19, 26]) {
+      ctx.save(); ctx.translate(cx, 0);
+      poly([[-0.25, 0], [0.25, 0], [0.25, 2.2], [-0.25, 2.2]], '#4caf50', lw);
+      poly([[0.25, 1.0], [0.9, 1.0], [0.9, 1.9], [0.55, 1.9], [0.55, 1.35], [0.25, 1.35]], '#4caf50', lw);
+      poly([[-0.25, 0.7], [-0.9, 0.7], [-0.9, 1.6], [-0.55, 1.6], [-0.55, 1.05], [-0.25, 1.05]], '#4caf50', lw);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawStopMarker() {
+    if (!settings.assist || autopilot || mode !== 'flight' || !predict || state.vel >= 0) return;
+    const px = Math.max(13, Math.min(18, view.w / 50));
+    if (!predict.feasible) {
+      const y = sy(state.alt) + 2.6 * cam.ppm + 30;
+      label('Not enough gas to stop', sx(0) - 90, Math.min(y, view.h - 40), px, '#fff', '#e8402f');
+      return;
+    }
+    const stopAlt = state.alt - predict.distance;
+    const y = stopAlt >= 0 ? sy(stopAlt) : sy(0) + Math.min(60, -stopAlt * cam.ppm);
+    const late = stopAlt < 0;
+    ctx.save();
+    ctx.setLineDash([10, 8]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = late ? '#e8402f' : INK;
+    ctx.beginPath();
+    ctx.moveTo(sx(0) - 4.5 * cam.ppm, y);
+    ctx.lineTo(sx(0) + 4.5 * cam.ppm, y);
+    ctx.stroke();
+    ctx.restore();
+    const text = late
+      ? `Too late by ${fmt(-stopAlt, 1)} m`
+      : (stopAlt < 1.0 ? 'Fire now!' : `Fire now and you stop ${fmt(stopAlt, 1)} m up`);
+    label(text, sx(0) + 4.6 * cam.ppm + 8, y, px, late ? '#fff' : INK, late ? '#e8402f' : (stopAlt < 1.0 ? '#ffd23f' : '#fff6e5'));
+  }
+
+  function drawCar() {
+    const alt = state ? state.alt : level().height;
+    const ppm = cam.ppm;
+    const X = sx(0), Y = sy(alt);
+    const lw = Math.max(0.07, 2.6 / ppm);
+    ctx.save();
+    ctx.translate(X, Y);
+    ctx.scale(ppm, -ppm);
+    ctx.rotate(car.tilt + car.wobble);
+    ctx.scale(1 + car.squash, 1 - car.squash);
+    if (car.wrecked) ctx.translate(0, -0.22);
+
+    // plumes (behind the body)
+    if (state && state.valve > 0.02 && !state.landed) {
+      const v = state.valve * (0.35 + 0.65 * P.thrustFade(state.gas));
+      for (const nx of [-1.25, -0.1, 1.05]) {
+        const flick = 0.85 + 0.3 * Math.sin(clock * 47 + nx * 13) * Math.random();
+        const L = v * 2.2 * flick;
+        const w0 = 0.14, w1 = 0.22 + 0.45 * v;
+        ctx.globalAlpha = 0.85;
+        poly([[nx - w0, 0.2], [nx + w0, 0.2], [nx + w1, 0.2 - L], [nx, 0.2 - L * 1.25], [nx - w1, 0.2 - L]], '#9fe0ff');
+        ctx.globalAlpha = 0.95;
+        poly([[nx - w0 * 0.6, 0.2], [nx + w0 * 0.6, 0.2], [nx + w1 * 0.45, 0.2 - L * 0.7], [nx, 0.2 - L * 0.85], [nx - w1 * 0.45, 0.2 - L * 0.7]], '#ffffff');
+        // shock diamonds
+        ctx.globalAlpha = 0.7;
+        for (let k = 1; k <= 3; k++) {
+          const dy = 0.2 - L * (k / 4) * 0.9;
+          circle(nx, dy, w0 * 0.55 * (1 - k * 0.15), '#dff5ff');
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // nozzles
+    for (const nx of [-1.25, -0.1, 1.05]) poly([[nx - 0.13, 0.36], [nx + 0.13, 0.36], [nx + 0.17, 0.18], [nx - 0.17, 0.18]], '#8e95a0', lw * 0.8);
+
+    // body: wedge profile of the new Roadster, nose at +x, cab set back
+    const paint = car.wrecked ? '#a9adb5' : '#eef1f5';
+    const shade = car.wrecked ? '#8b9099' : '#c9d0da';
+    const trim = '#3d3650';
+    const body = [
+      [-2.12, 0.24], [-2.18, 0.92], [-1.90, 1.02], [-0.95, 1.24], [-0.15, 1.30],
+      [0.55, 1.18], [1.25, 0.92], [2.00, 0.66], [2.40, 0.54], [2.36, 0.24], [1.95, 0.18], [-1.90, 0.18],
+    ];
+    // rear wing (stalk behind the deck)
+    poly([[-1.86, 0.98], [-1.74, 0.98], [-1.80, 1.30], [-1.92, 1.30]], trim, lw * 0.7);
+    poly([[-2.50, 1.34], [-1.55, 1.40], [-1.66, 1.30], [-2.42, 1.12]], paint, lw);
+
+    poly(body, paint);
+    ctx.save();
+    ctx.clip();
+    // lower facet under the shoulder crease, black skirt, wheel wells
+    poly([[-2.3, 0.80], [2.5, 0.50], [2.5, 0], [-2.3, 0]], shade);
+    ctx.strokeStyle = INK; ctx.lineWidth = lw * 0.5;
+    ctx.beginPath(); ctx.moveTo(-2.3, 0.80); ctx.lineTo(2.5, 0.50); ctx.stroke();
+    poly([[-2.3, 0], [-2.3, 0.50], [-1.95, 0.40], [-0.9, 0.32], [0.78, 0.30], [0.92, 0.50], [1.02, 0.50],
+      [1.05, 0.30], [2.5, 0.30], [2.5, 0]], trim);
+    for (const wx of [-1.45, 1.45]) circle(wx, 0.39, 0.47, INK);
+    ctx.restore();
+    poly(body, null, lw);
+    // glass + B-pillar
+    poly([[-1.0, 1.04], [-0.88, 1.17], [-0.15, 1.23], [0.5, 1.13], [1.12, 0.88]], '#4b4462', lw * 0.8);
+    poly([[0.45, 0.98], [0.58, 1.09], [0.72, 1.03], [0.6, 0.96]], 'rgba(255,255,255,0.45)');
+    poly([[0.04, 0.96], [0.18, 0.95], [0.14, 1.19], [0.0, 1.20]], paint, lw * 0.6);
+    // door line
+    ctx.strokeStyle = INK; ctx.lineWidth = lw * 0.6;
+    ctx.beginPath(); ctx.moveTo(-0.25, 0.33); ctx.lineTo(-0.2, 0.98); ctx.stroke();
+    // lights: headlight slit, side marker, tail light
+    poly([[1.98, 0.62], [2.38, 0.52], [2.38, 0.46], [1.98, 0.56]], '#fff5b0', lw * 0.6);
+    poly([[0.86, 0.60], [1.02, 0.60], [1.02, 0.66], [0.86, 0.66]], '#ffa23a', lw * 0.5);
+    poly([[-2.18, 0.82], [-2.0, 0.84], [-2.0, 0.76], [-2.17, 0.72]], '#ff4d4d', lw * 0.6);
+
+    // wheels: big, fully exposed, dark spokes on a light rim
+    if (car.wheels) {
+      for (const wx of [-1.45, 1.45]) {
+        circle(wx, 0.39, 0.40, INK, lw);
+        circle(wx, 0.39, 0.28, '#d9dde2', lw * 0.8);
+        ctx.save();
+        ctx.translate(wx, 0.39);
+        ctx.rotate(clock * 0.3);
+        ctx.strokeStyle = trim; ctx.lineWidth = 0.07; ctx.lineCap = 'round';
+        for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 0.25, Math.sin(a) * 0.25); ctx.stroke(); }
+        circle(0, 0, 0.07, trim, lw * 0.5);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+
+    // crane cable and claw
+    if (claw.rise * cam.ppm < view.h * 2 && (mode === 'countdown' || mode === 'flight')) {
+      const top = -40;
+      const hookY = Y - 1.36 * ppm - claw.rise * ppm;
+      ctx.save();
+      ctx.strokeStyle = INK; ctx.lineWidth = Math.max(3, 0.08 * ppm);
+      ctx.beginPath(); ctx.moveTo(X, top); ctx.lineTo(X, hookY - 0.25 * ppm); ctx.stroke();
+      ctx.translate(X, hookY);
+      ctx.scale(ppm, ppm);
+      circle(0, -0.25, 0.22, '#ffd23f', lw);
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.rotate(side * claw.open * 0.9);
+        poly([[0, -0.1], [side * 0.65, 0.1], [side * 0.55, 0.42], [side * 0.35, 0.42], [side * 0.4, 0.2], [0, 0.12]], '#c9c2b7', lw);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // wreck stars
+    if (car.wrecked && landedT < 6) {
+      for (let k = 0; k < 3; k++) {
+        const a = clock * 4 + k * TAU / 3;
+        const px = X + Math.cos(a) * 1.1 * ppm;
+        const py = Y - 1.9 * ppm + Math.sin(a) * 0.25 * ppm;
+        cartoonText('★', px, py, Math.max(16, 0.5 * ppm), '#ffd23f');
+      }
+    }
+  }
+
+  function drawParticles() {
+    for (const p of parts) {
+      const X = sx(p.x), Y = sy(p.y), r = p.r * cam.ppm;
+      const fade = 1 - p.age / p.life;
+      ctx.save();
+      ctx.globalAlpha = p.kind === 'puff' ? fade * 0.9 : 1;
+      if (p.kind === 'wheel') {
+        ctx.translate(X, Y); ctx.rotate(p.rot);
+        circle(0, 0, r, INK, 2.5); circle(0, 0, r * 0.55, '#d9dde2', 2);
+      } else if (p.kind === 'confetti' || p.kind === 'bit') {
+        ctx.translate(X, Y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color; ctx.fillRect(-r, -r * 0.5, r * 2, r);
+      } else if (p.kind === 'spark') {
+        ctx.fillStyle = p.color; ctx.fillRect(X - 2, Y - 2, 4, 4);
+      } else {
+        circle(X, Y, r, p.color);
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawSpeedLines() {
+    if (!state || mode !== 'flight' || Math.abs(state.vel) < 9) return;
+    const n = Math.min(14, Math.floor(Math.abs(state.vel) / 3));
+    const dir = state.vel < 0 ? -1 : 1;  // falling: lines streak upward
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    const Y = sy(state.alt);
+    for (let i = 0; i < n; i++) {
+      const x = sx(0) + ((i * 97) % 11 - 5) * 0.9 * cam.ppm;
+      const len = (20 + (i * 37) % 40) * (Math.abs(state.vel) / 25);
+      const y = Y + ((clock * 900 + i * 173) % 400) * dir - dir * 200;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + len * dir); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBanners() {
+    if (mode === 'countdown') {
+      const n = 3 - Math.floor(cdT / 0.5);
+      const t = (cdT % 0.5) / 0.5;
+      const scale = 1.3 - 0.3 * Math.min(1, t * 3);
+      const px = Math.min(160, view.w * 0.25) * scale;
+      cartoonText(n > 0 ? String(n) : 'DROP!', view.w / 2, view.h * 0.5, px, n > 0 ? '#ffd23f' : '#e8402f', 'center', -0.05);
+    } else if (mode === 'flight' && banner > 0) {
+      const px = Math.min(150, view.w * 0.22) * (1 + 0.1 * Math.sin(banner * 20));
+      ctx.globalAlpha = Math.min(1, banner * 3);
+      cartoonText('DROP!', view.w / 2, view.h * 0.5, px, '#e8402f', 'center', -0.05);
+      ctx.globalAlpha = 1;
+    } else if (mode === 'landed' && landedT < 1.2) {
+      const r = P.rate(state.impactG);
+      const px = Math.min(110, view.w * 0.16) * Math.min(1, landedT * 4);
+      cartoonText(r.stars === 0 ? 'CRUNCH!' : r.stars === 1 ? 'OOF!' : r.stars === 2 ? 'NICE!' : 'BUTTER!', view.w / 2, view.h * 0.38, px, r.stars === 0 ? '#e8402f' : '#ffd23f', 'center', 0.04);
+    }
+  }
+
+  function render() {
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    drawSky();
+    drawSun();
+    drawClouds();
+    drawHills();
+    drawGround();
+    if (mode === 'menu') { drawCar(); return; }
+    drawStopMarker();
+    drawCar();
+    drawParticles();
+    drawSpeedLines();
+    drawBanners();
+  }
+
+  // ------------------------------------------------------------ HUD
+  const hud = {
+    alt: $('#hud-alt'), vel: $('#hud-vel'), g: $('#hud-g'), gauge: $('#gauge-g'),
+    gas: $('#gas'), gasTxt: $('#hud-gas-txt'), gasFill: $('#hud-gas-fill'), gasNeed: $('#hud-gas-need'),
+  };
+  function updateHud() {
+    if (!state) return;
+    hud.alt.textContent = fmt(state.alt, 1);
+    const v = state.vel;
+    hud.vel.textContent = (v < -0.05 ? '↓ ' : v > 0.05 ? '↑ ' : '') + fmt(Math.abs(v), 1);
+    hud.g.textContent = fmt(state.specificG, 1);
+    hud.gauge.classList.toggle('hot', state.specificG > 6);
+    hud.gasTxt.textContent = fmt(state.gas * 100, 0) + '%';
+    hud.gasFill.style.transform = `scaleX(${state.gas})`;
+    if (predict && state.vel < 0 && mode === 'flight') {
+      const needFrac = predict.feasible ? predict.impulse / C.IMPULSE_TOTAL : 1;
+      const left = state.gas;
+      hud.gasNeed.style.display = 'block';
+      hud.gasNeed.style.left = `${clamp(needFrac, 0, 1) * 100}%`;
+      hud.gas.classList.toggle('short', !predict.feasible || needFrac > left);
+    } else {
+      hud.gasNeed.style.display = 'none';
+      hud.gas.classList.remove('short');
+    }
+  }
+
+  // ------------------------------------------------------------ result screen
+  function showResult() {
+    const r = P.rate(state.impactG);
+    const el = $('#result');
+    el.classList.toggle('bad', r.stars === 0);
+    $('#res-stars').innerHTML = [0, 1, 2].map((i) => `<span class="${i < r.stars ? '' : 'off'}">★</span>`).join('');
+    $('#res-title').textContent = r.title;
+    $('#res-text').textContent = r.text;
+    $('#res-diff').innerHTML = `${level().name} · ${level().height} m · ${fmt(settings.mass, 0)} kg <span class="dtag d${diff.level}">${diff.name}</span>`
+      + (autopilotUsed ? ' <span class="dtag ap">Autopilot</span>' : '');
+    const rows = [
+      ['Touchdown speed', `${fmt(state.touchdownSpeed, 1)} m/s`, false],
+      ['Impact (20 cm of suspension travel)', `${fmt(state.impactG, 1)} g`, r.stars === 0],
+      ['Peak g felt in flight', `${fmt(state.peakG, 1)} g`, state.peakG > 6],
+      ['Gas used', `${fmt(state.impulseUsed / 1000, 0)} kN·s (${fmt(state.impulseUsed / C.IMPULSE_TOTAL * 100, 0)}% of a fill)`, state.gas <= 0],
+      ['A perfect burn needs', ideal.feasible ? `${fmt(ideal.impulse / 1000, 0)} kN·s, ${fmt(ideal.burnTime, 2)} s` : 'more than one fill', !ideal.feasible],
+      ['Time in the air', `${fmt(state.t, 2)} s`, false],
+    ];
+    $('#res-stats').innerHTML = rows.map(([k, v, hot]) => `<tr class="${hot ? 'hot' : ''}"><td>${k}</td><td>${v}</td></tr>`).join('');
+    $('#res-lesson').textContent = lesson(r);
+    $('#next').classList.toggle('hidden', r.stars === 0);
+    el.classList.remove('hidden');
+    $('#retry').focus();
+  }
+  function lesson(r) {
+    const m = fmt(settings.mass, 0), h = level().height;
+    if (autopilotUsed) {
+      return ideal.feasible
+        ? `The autopilot fell freely, then fired once at ≈ ${fmt(ideal.startAlt, 1)} m (${fmt(ideal.speedAtStart, 1)} m/s) and held the burn until the descent was down to about 1 m/s. That single late burn is the cheapest landing there is: ${fmt(state.impulseUsed / 1000, 0)} kN·s of the ${fmt(ideal.impulse / 1000, 0)} a perfect burn needs. No score is kept for autopilot runs.`
+        : `Even the autopilot cannot save this one: a ${m} kg car from ${h} m needs more push than one fill holds, so it burned everything to arrive as slowly as the gas allowed. No score is kept for autopilot runs.`;
+    }
+    if (!ideal.feasible) {
+      return `No landing was possible: a ${m} kg car falling from ${h} m needs more push than one fill holds (about 80 kN·s). The thrusters must carry the car's whole weight for every second it hangs in the air. Try a lighter car or a lower level.`;
+    }
+    if (r.stars === 0 && state.gasOutAlt !== null) {
+      return `The tank ran dry ${fmt(state.gasOutAlt, 1)} m above the pad. A perfect burn from ${h} m needs ≈ ${fmt(ideal.impulse / 1000, 0)} kN·s; you used ${fmt(state.impulseUsed / 1000, 0)} kN·s because the burn started early or in pieces. Fall longer, then burn once, hard.`;
+    }
+    if (r.stars === 0 && state.burnTime < 0.05) {
+      return `You never opened the nozzles. From ${h} m the car hits at ${fmt(state.touchdownSpeed, 1)} m/s no matter how heavy it is: mass changes the force needed, not the fall.`;
+    }
+    if (r.stars === 0) {
+      return `The burn started too late. At ${m} kg a full burn brakes at ${fmt(C.THRUST_MAX / (settings.mass * C.G) - 1, 1)} g, so from ${h} m it needs ≈ ${fmt(ideal.startAlt, 1)} m of altitude to stop. Watch the dashed stop marker and fire when it reaches the pad.`;
+    }
+    const used = state.impulseUsed / 1000, best = ideal.impulse / 1000;
+    const share = fmt(state.impulseUsed / C.IMPULSE_TOTAL * 100, 0);
+    const tail = settings.mass <= 600
+      ? ` A ${m} kg shell is a bucking bronco: 80 kN gives it ${fmt(C.THRUST_MAX / (settings.mass * C.G), 0)} g, so only quick taps work.`
+      : ` A ${m} kg car gets ${fmt(C.THRUST_MAX / (settings.mass * C.G), 1)} g from the same nozzles, so the burn has to be long and well timed.`;
+    return `You used ${fmt(used, 0)} kN·s (${share}% of a fill); a perfect single burn needs ${fmt(best, 0)} kN·s.` + tail;
+  }
+
+  // ------------------------------------------------------------ menu
+  const maxHeightMemo = new Map();
+  function maxHeight(mass) {
+    if (maxHeightMemo.has(mass)) return maxHeightMemo.get(mass);
+    let lo = 1, hi = 400;
+    if (P.idealBurn(mass, hi, 1 / 60).feasible) { maxHeightMemo.set(mass, Infinity); return Infinity; }
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      if (P.idealBurn(mass, mid, 1 / 60).feasible) lo = mid; else hi = mid;
+    }
+    maxHeightMemo.set(mass, lo);
+    return lo;
+  }
+  let badgeTimer = 0;
+  function renderMenu() {
+    const m = settings.mass;
+    $('#mass').value = m;
+    $('#mass-kg').textContent = fmt(m, 0);
+    $('#assist').checked = settings.assist;
+    $('#sound').checked = settings.sound;
+    $('#autopilot').checked = settings.autopilot;
+    const presets = $('#mass-presets');
+    presets.innerHTML = '';
+    for (const p of P.MASS_PRESETS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = `${p.label} · ${fmt(p.kg, 0)} kg`;
+      b.title = p.note;
+      b.classList.toggle('on', p.kg === m);
+      b.addEventListener('click', () => { settings.mass = p.kg; saveSettings(); renderMenu(); });
+      presets.appendChild(b);
+    }
+    const twr = C.THRUST_MAX / (m * C.G);
+    $('#mass-fact').textContent = `Thrust is ${fmt(twr, 1)}× the weight: a full burn brakes at ${fmt(twr - 1, 1)} g and the car feels ${fmt(twr, 1)} g. Checking how high one fill can stop it from…`;
+    const levels = $('#levels');
+    levels.innerHTML = '';
+    P.LEVELS.forEach((l, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'level' + (i === settings.level ? ' on' : '');
+      const best = settings.best[l.id] || 0;
+      b.innerHTML = `<div class="name">${l.name}${best ? `<span class="best">${'★'.repeat(best)}</span>` : ''}</div>
+        <div class="height">${l.height} m</div>
+        <div class="blurb">${l.blurb}</div>
+        <div class="badge">…</div>`;
+      b.addEventListener('click', () => { settings.level = i; saveSettings(); renderMenu(); });
+      levels.appendChild(b);
+    });
+    clearTimeout(badgeTimer);
+    badgeTimer = setTimeout(() => fillBadges(m), 60);
+  }
+  function fillBadges(m) {
+    if (m !== settings.mass) return;
+    const cards = document.querySelectorAll('#levels .level');
+    P.LEVELS.forEach((l, i) => {
+      const d = P.difficulty(m, l.height, 1 / 60);
+      const card = cards[i];
+      if (!card) return;
+      card.classList.toggle('impossible', !d.ideal.feasible);
+      card.querySelector('.badge').innerHTML = d.ideal.feasible
+        ? `<span class="dtag d${d.level}">${d.name}</span> needs ≈ ${fmt(d.ideal.impulse / 1000, 0)} of 80 kN·s`
+        : `<span class="dtag d${d.level}">${d.name}</span> at ${fmt(m, 0)} kg`;
+      card.title = d.ideal.feasible
+        ? `Spare gas after a perfect burn buys ${fmt(d.hoverMargin, 1)} s of hovering; one tap of Space changes the speed by ${fmt(d.tapDv, 1)} m/s.`
+        : `No burn can stop ${fmt(m, 0)} kg from ${l.height} m on one fill.`;
+    });
+    const mh = maxHeight(m);
+    const twr = C.THRUST_MAX / (m * C.G);
+    $('#mass-fact').textContent = `Thrust is ${fmt(twr, 1)}× the weight: a full burn brakes at ${fmt(twr - 1, 1)} g and the car feels ${fmt(twr, 1)} g. One fill can stop it from ${mh === Infinity ? 'any height here' : 'at most ' + fmt(mh, 0) + ' m'}.`;
+  }
+  $('#mass').addEventListener('input', (e) => {
+    settings.mass = clamp(parseInt(e.target.value, 10), C.MASS_MIN, C.MASS_MAX);
+    saveSettings();
+    renderMenu();
+  });
+  $('#assist').addEventListener('change', (e) => { settings.assist = e.target.checked; saveSettings(); });
+  $('#sound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); });
+  $('#autopilot').addEventListener('change', (e) => { settings.autopilot = e.target.checked; saveSettings(); });
+  $('#start').addEventListener('click', (e) => { e.target.blur(); audioInit(); audioResume(); saveSettings(); startRun(); });
+  $('#retry').addEventListener('click', (e) => { e.target.blur(); startRun(); });
+  $('#next').addEventListener('click', (e) => { e.target.blur(); nextLevel(); });
+  $('#to-menu').addEventListener('click', (e) => { e.target.blur(); showMenu(); });
+
+  // ------------------------------------------------------------ main loop
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (mode === 'menu') {
+      clock += dt;
+      updateCamera(level().height, dt, false);
+    } else {
+      update(dt);
+      updateHud();
+    }
+    render();
+    requestAnimationFrame(frame);
+  }
+  renderMenu();
+  updateCamera(level().height, 0, true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
